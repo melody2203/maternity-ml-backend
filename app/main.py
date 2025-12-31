@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import joblib
 import numpy as np
@@ -28,27 +28,42 @@ class PatientData(BaseModel):
     Age: float
     SystolicBP: float
     DiastolicBP: float
-    BloodSugar: float
+    BS: float
     BodyTemp: float
     HeartRate: float
-    MaternityMonth: int
+    # MaternityMonth is accepted but not used by the current model
+    MaternityMonth: int = 0
 
 @app.post("/predict/logistic")
 def predict_logistic(data: PatientData):
-    X = np.array([[data.Age, data.SystolicBP, data.DiastolicBP,
-                   data.BloodSugar, data.BodyTemp, data.HeartRate,
-                   data.MaternityMonth]])
-    X_scaled = scaler.transform(X)
-    pred = log_model.predict(X_scaled)[0]
-    return {"RiskLevel": int(pred)}
+    try:
+        # The model was trained with 6 features: Age, SystolicBP, DiastolicBP, BS, BodyTemp, HeartRate
+        X = np.array([[data.Age, data.SystolicBP, data.DiastolicBP,
+                       data.BS, data.BodyTemp, data.HeartRate]])
+        
+        X_scaled = scaler.transform(X)
+        pred = log_model.predict(X_scaled)[0]
+        
+        # Binary or Multi-class? The dataset has 'low risk', 'mid risk', 'high risk'
+        # LogisticRegression might return string or int depending on label encoding
+        return {"RiskLevel": str(pred)}
+    except Exception as e:
+        print(f"Error in /predict/logistic: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/predict/tree")
 def predict_tree(data: PatientData):
-    X = np.array([[data.Age, data.SystolicBP, data.DiastolicBP,
-                   data.BloodSugar, data.BodyTemp, data.HeartRate,
-                   data.MaternityMonth]])
-    pred = dt_model.predict(X)[0]
-    return {"RiskLevel": int(pred)}
+    try:
+        # The model was trained with 6 features: Age, SystolicBP, DiastolicBP, BS, BodyTemp, HeartRate
+        X = np.array([[data.Age, data.SystolicBP, data.DiastolicBP,
+                       data.BS, data.BodyTemp, data.HeartRate]])
+        
+        pred = dt_model.predict(X)[0]
+        return {"RiskLevel": str(pred)}
+    except Exception as e:
+        print(f"Error in /predict/tree: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/")
 def root():
     return {"message": "Maternity Risk Prediction API is running"}
